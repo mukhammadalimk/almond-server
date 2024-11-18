@@ -1,0 +1,15 @@
+{
+  "_id": "",
+  "user": "",
+  "title": "string",
+  "category": "",
+  "status": "draft",
+  "pictures": "",
+  "price": "",
+  "description": "",
+  "age": "",
+  "usage": "",
+  "condition": "",
+  "brand": "",
+  "location": ""
+}

@@ -1,0 +1,23 @@
+{
+  "_id": "",
+  "user": "",
+  "title": "string",
+  "category": "",
+  "status": "draft",
+  "pictures": "",
+  "price": "",
+  "description": "",
+  "age": "",
+  "usage": "",
+  "condition": "",
+  "warranty": "",
+  "color": "",
+  "damages_on_device?": "",
+  "damage_details?": "",
+  "percentage_of_battery_health?": "",
+  "version?": "",
+  "accompaniments?": "",
+  "storage_capacity": "",
+  "memory_ram?": "",
+  "location": ""
+}
