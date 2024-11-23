@@ -19,13 +19,16 @@ export interface IUser extends Document {
     country_code?: string;
     phone_number?: string;
   };
+  username: string;
   email?: string;
   ordinal_number: number;
-  photo?: string;
-  photo_blurred?: string;
+  profile_image?: string;
   region_id: RegionID;
   sex: "male" | "female";
   lang: "uz" | "ru" | "en";
+
+  role: "user" | "admin";
+  status: "pending" | "active" | "inactive";
 
   average_rating: number;
   ratings_quantity: number;
@@ -67,4 +70,6 @@ export interface IUser extends Document {
   createdAt: NativeDate;
   updatedAt: NativeDate;
   __v: number;
+
+  isModified: (path: string) => boolean;
 }

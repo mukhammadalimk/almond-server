@@ -1,6 +1,7 @@
 import Mongoose, { Schema } from "mongoose";
 import { IUser } from "../types/IUser";
 import { SuspensionReason } from "../data/suspension.reasons";
+import bcrypt from "bcrypt";
 
 const UserSchema = new Mongoose.Schema(
   {
@@ -19,8 +20,20 @@ const UserSchema = new Mongoose.Schema(
       default: "",
     },
     phone_number_details: {
-      country_code: { type: String, trim: true },
-      phone_number: { type: String, trim: true, unique: true },
+      country_code: { type: String, trim: true, min: 2, max: 2 },
+      phone_number: { type: String, trim: true, unique: true, min: 9, max: 9 },
+    },
+
+    username: {
+      type: String,
+      min: 4,
+      max: 20,
+      // It will be auto generated in our server based on their first name,
+      // and can be changable in user dashboard after the user creates their account.
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
     },
     email: {
       type: String,
@@ -31,16 +44,15 @@ const UserSchema = new Mongoose.Schema(
       trim: true,
     },
     // It is the order of the user based on when they joined the website.
-    ordinal_number: { type: Number, unique: true, required: true },
+    ordinal_number: { type: Number, unique: true },
 
-    photo: String,
-    photo_blurred: String,
+    profile_image: String,
 
-    region_id: {
-      type: Number,
-      enum: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
-      required: true,
-    },
+    // region_id: {
+    //   type: Number,
+    //   enum: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+    //   required: true,
+    // },
     sex: {
       type: String,
       enum: ["male", "female"],
@@ -52,13 +64,31 @@ const UserSchema = new Mongoose.Schema(
       default: "uz",
     },
 
+    role: {
+      type: String,
+      enum: ["user", "admin"],
+      required: true,
+      default: "user",
+    },
+    status: {
+      type: String,
+      enum: ["pending", "active", "inactive"],
+      required: true,
+      default: "pending",
+    },
+
     // RATING
     average_rating: {
       type: Number,
-      min: 1,
-      max: 5,
-      set: (val: number) => Math.round(val * 10) / 10,
       default: 0,
+      validate: {
+        validator: function (val: number) {
+          // Allow 0 only for default case
+          return val === 0 || (val >= 1 && val <= 5);
+        },
+        message: "Average rating must be between 1 and 5, unless it's 0.",
+      },
+      set: (val: number) => Math.round(val * 10) / 10,
     },
     ratings_quantity: { type: Number, default: 0 },
 
@@ -123,6 +153,13 @@ const UserSchema = new Mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Encrypting password
+UserSchema.pre<IUser>("save", async function (next) {
+  if (!this.isModified("password")) return next();
+  this.password = await bcrypt.hash(this.password, 12);
+  next();
+});
 
 const User = Mongoose.model<IUser>("User", UserSchema);
 export default User;
