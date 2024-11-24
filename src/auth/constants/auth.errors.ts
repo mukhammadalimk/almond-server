@@ -1,6 +1,6 @@
-import { Locale } from "../types/shared.types";
+import { Locale } from "../../types/shared.types";
 
-interface SignupErrorsTypes {
+export interface SignupErrorsTypes {
   email_empty: string;
   email_already_exists: string;
   short_password: string;
@@ -61,7 +61,7 @@ export const signup_errors: Record<Locale, SignupErrorsTypes> = {
 };
 
 // --------------------------------------------------------------------------------- //
-interface LoginErrorsTypes {
+export interface LoginErrorsTypes {
   incorrect_credentials_email: string;
   incorrect_credentials_phone_number: string;
 }
@@ -83,7 +83,7 @@ export const login_errors: Record<Locale, LoginErrorsTypes> = {
 };
 
 // --------------------------------------------------------------------------------- //
-interface VerifyErrorsTypes {
+export interface VerifyErrorsTypes {
   code_absent: string;
   code_invalid: string;
   code_expired: string;
@@ -114,7 +114,7 @@ export const verify_errors: Record<Locale, VerifyErrorsTypes> = {
 };
 
 // --------------------------------------------------------------------------------- //
-interface SendVCodeErrorsTypes {
+export interface SendVCodeErrorsTypes {
   user_not_found: string;
 }
 
@@ -133,7 +133,7 @@ export const send_v_code_errors: Record<Locale, SendVCodeErrorsTypes> = {
 };
 
 // --------------------------------------------------------------------------------- //
-interface PotectRoutesErrorsTypes {
+export interface PotectRoutesErrorsTypes {
   user_changed_password: string;
 }
 
@@ -148,7 +148,7 @@ export const protect_routes_errors: Record<Locale, PotectRoutesErrorsTypes> = {
   },
   en: {
     user_changed_password:
-      "User has changed their password recently. Please log in again.",
+      "VerifiedUser has changed their password recently. Please log in again.",
   },
 };
 

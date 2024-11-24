@@ -30,7 +30,7 @@ const UserSchema = new Mongoose.Schema(
       max: 20,
       // It will be auto generated in our server based on their first name,
       // and can be changable in user dashboard after the user creates their account.
-      required: true,
+      // required: true,
       unique: true,
       lowercase: true,
       trim: true,
@@ -70,12 +70,13 @@ const UserSchema = new Mongoose.Schema(
       required: true,
       default: "user",
     },
-    status: {
+    account_status: {
       type: String,
-      enum: ["pending", "active", "inactive"],
+      enum: ["pending", "active", "pending_deletion"],
       required: true,
-      default: "pending",
     },
+    account_deletion_request_date: Date,
+    account_deletion_date: Date,
 
     // RATING
     average_rating: {
@@ -93,10 +94,10 @@ const UserSchema = new Mongoose.Schema(
     ratings_quantity: { type: Number, default: 0 },
 
     //
-    blocked_users: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    blocked_users: [{ type: Schema.Types.ObjectId, ref: "VerifiedUser" }],
 
     // If the user adds another user to his favorite users list, het gets notified when one of the users in his favorite_users list posts an item for sale.
-    favorite_users: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    favorite_users: [{ type: Schema.Types.ObjectId, ref: "VerifiedUser" }],
 
     favorite_items: [{ type: Schema.Types.ObjectId, ref: "Item" }],
     favorite_properties: [{ type: Schema.Types.ObjectId, ref: "Property" }],
@@ -111,7 +112,6 @@ const UserSchema = new Mongoose.Schema(
 
     is_verified_user: { type: Boolean, default: false, required: true },
     is_phone_number_verified: { type: Boolean, default: false, required: true },
-    is_email_verified: { type: Boolean, default: false, required: true },
 
     // PASSWORD
     password: {
@@ -145,7 +145,7 @@ const UserSchema = new Mongoose.Schema(
       {
         last_seen: Date,
         ip_address: String,
-        created_at: Date,
+        logged_at: Date,
         address: String,
         refresh_token: String,
       },
@@ -161,5 +161,6 @@ UserSchema.pre<IUser>("save", async function (next) {
   next();
 });
 
-const User = Mongoose.model<IUser>("User", UserSchema);
-export default User;
+const VerifiedUser = Mongoose.model<IUser>("User", UserSchema);
+const UnverifiedUser = Mongoose.model<IUser>("UnverifiedUser", UserSchema);
+export { VerifiedUser, UnverifiedUser };

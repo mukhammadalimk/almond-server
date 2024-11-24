@@ -1,4 +1,4 @@
-import { Locale } from "../types/shared.types";
+import { Locale } from "../../types/shared.types";
 
 interface SendVerificationEmailTypes {
   for_sign_up: {

@@ -1,4 +1,5 @@
 import { ObjectId } from "mongoose";
+import { Document } from "mongoose";
 import { SuspensionReason } from "../data/suspension.reasons";
 
 type RegionID = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
@@ -6,7 +7,7 @@ type RegionID = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
 interface LoginSession {
   last_seen: Date;
   ip_address: string;
-  created_at: Date;
+  logged_at: Date;
   address: string;
   refresh_token: string;
 }
@@ -28,7 +29,9 @@ export interface IUser extends Document {
   lang: "uz" | "ru" | "en";
 
   role: "user" | "admin";
-  status: "pending" | "active" | "inactive";
+  account_status: "pending" | "active" | "pending_deletion";
+  account_deletion_request_date: Date;
+  account_deletion_date: Date;
 
   average_rating: number;
   ratings_quantity: number;
@@ -47,7 +50,6 @@ export interface IUser extends Document {
 
   is_verified_user: boolean;
   is_phone_number_verified: boolean;
-  is_email_verified: boolean;
 
   // PASSWORD
   password: string;
@@ -70,6 +72,4 @@ export interface IUser extends Document {
   createdAt: NativeDate;
   updatedAt: NativeDate;
   __v: number;
-
-  isModified: (path: string) => boolean;
 }

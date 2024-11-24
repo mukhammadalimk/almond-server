@@ -1,8 +1,8 @@
 import express, { Express, NextFunction, Request, Response } from "express";
 import AppError from "./utils/app.error.js";
 import cookieParser from "cookie-parser";
-import auth_router from "./routes/auth.router.js";
-import global_error_handler from "./controllers/error.controllers.js";
+import global_error_handler from "./error/error.controllers.js";
+import auth_router from "./auth/router/auth.router.js";
 
 const app: Express = express();
 
