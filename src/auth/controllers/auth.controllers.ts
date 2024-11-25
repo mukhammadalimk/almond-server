@@ -6,6 +6,7 @@ import {
   login_errors,
   protect_routes_errors,
   restrict_to_errors,
+  send_v_code_errors,
   signup_errors,
   token_errors,
   verify_errors,
@@ -135,53 +136,62 @@ export const signup_with_email = catch_async(
         Date.now() + 10 * 60 * 1000
       );
 
-      await user_repo.save(existing_user);
+      try {
+        await user_repo.save(existing_user);
+
+        await send_email({
+          from: "Almond <mailtrap@almond.uz>",
+          to: existing_user.email,
+          subject: send_verification_email_texts[locale].for_sign_up.subject,
+          text:
+            send_verification_email_texts[locale].for_sign_up.text +
+            existing_user.verification_code,
+        });
+
+        res.cookie("_almond_email_", existing_user.email, cookie_options);
+
+        return res.status(201).json({
+          status: "success",
+          message: signup_responses[locale].sent_to_email,
+        });
+      } catch (error) {
+        const error_text = signup_errors[locale].sending_verification_code;
+        return next(new AppError(error_text, 500));
+      }
+    }
+
+    try {
+      const username = await create_unique_username(first_name);
+
+      const user = user_repo.create({
+        email,
+        first_name,
+        password,
+        username,
+        verification_code,
+        verification_code_expires_at: new Date(Date.now() + 10 * 60 * 1000),
+      });
+      await user_repo.save(user);
 
       await send_email({
         from: "Almond <mailtrap@almond.uz>",
-        to: existing_user.email,
+        to: user.email,
         subject: send_verification_email_texts[locale].for_sign_up.subject,
         text:
           send_verification_email_texts[locale].for_sign_up.text +
-          existing_user.verification_code,
+          user.verification_code,
       });
 
-      res.cookie("_almond_email_", existing_user.email, cookie_options);
+      res.cookie("_almond_email_", user.email, cookie_options);
 
       return res.status(201).json({
         status: "success",
         message: signup_responses[locale].sent_to_email,
       });
+    } catch (error) {
+      const error_text = signup_errors[locale].sending_verification_code;
+      return next(new AppError(error_text, 500));
     }
-
-    const username = await create_unique_username(first_name);
-
-    const user = user_repo.create({
-      email,
-      first_name,
-      password,
-      username,
-      verification_code,
-      verification_code_expires_at: new Date(Date.now() + 10 * 60 * 1000),
-    });
-
-    await user_repo.save(user);
-
-    await send_email({
-      from: "Almond <mailtrap@almond.uz>",
-      to: user.email,
-      subject: send_verification_email_texts[locale].for_sign_up.subject,
-      text:
-        send_verification_email_texts[locale].for_sign_up.text +
-        user.verification_code,
-    });
-
-    res.cookie("_almond_email_", user.email, cookie_options);
-
-    return res.status(201).json({
-      status: "success",
-      message: signup_responses[locale].sent_to_email,
-    });
   }
 );
 
@@ -385,7 +395,7 @@ export const login = catch_async(
     const user = await user_repo
       .createQueryBuilder("user")
       .addSelect("user.password")
-      .where(user_credentials)
+      .where({ ...user_credentials, account_status: "active" })
       .getOne();
 
     // Return an error if user is not found or password is incorrect
@@ -522,3 +532,112 @@ export const restrict_to = (roles: ["user", "admin"]) => {
     next();
   };
 };
+
+// SEND VERIFICATION CODE TO EMAIL
+export const send_verification_code_to_email = catch_async(
+  async (req: Request, res: Response, next: NextFunction) => {
+    // Get locale from cookies and validate it
+    const locale = get_locale(req.cookies.user_locale);
+
+    // Get required data from req.cookies
+    const email = req.cookies._almond_email_;
+
+    if (!email) {
+      return next(new AppError(send_v_code_errors[locale].user_not_found, 401));
+    }
+
+    // Get user repository
+    const user_repo = AppDataSource.getRepository(User);
+
+    // Get user
+    const user = await user_repo
+      .createQueryBuilder("user")
+      .where("user.email IS NOT NULL AND user.email = :email", { email })
+      .getOne();
+
+    // Send an error is user is not found
+    if (!user) {
+      return next(new AppError(send_v_code_errors[locale].user_not_found, 401));
+    }
+
+    const verification_code = await generate_unique_verification_code();
+    user.verification_code = verification_code;
+    user.verification_code_expires_at = new Date(Date.now() + 10 * 60 * 1000);
+
+    try {
+      // Save the user
+      await user_repo.save(user);
+
+      // Send verification code to user's email
+      await send_email({
+        from: "Almond <mailtrap@almond.uz>",
+        to: user.email,
+        subject: send_verification_email_texts[locale].for_sign_up.subject,
+        text:
+          send_verification_email_texts[locale].for_sign_up.text +
+          user.verification_code,
+      });
+
+      return res.status(200).json({
+        status: "success",
+        message: signup_responses[locale].sent_to_email,
+      });
+    } catch (error) {
+      const error_text = signup_errors[locale].sending_verification_code;
+      return next(new AppError(error_text, 500));
+    }
+  }
+);
+
+// SEND VERIFICATION CODE TO PHONE NUMBER
+export const send_verification_code_to_phone_number = catch_async(
+  async (req: Request, res: Response, next: NextFunction) => {
+    // Get locale from cookies and validate it
+    const locale = get_locale(req.cookies.user_locale);
+
+    // Get required data from req.cookies
+    const country_code = req.cookies._almond_country_code_;
+    const phone_number = req.cookies._almond_phone_number_;
+
+    // Get user repository
+    const user_repo = AppDataSource.getRepository(User);
+
+    // Get user from database
+    const user = await user_repo
+      .createQueryBuilder("user")
+      .where(
+        "user.phone_number IS NOT NULL AND user.country_code IS NOT NULL AND user.country_code = :country_code AND user.phone_number = :phone_number",
+        { country_code, phone_number }
+      )
+      .getOne();
+
+    // Send an error is user is not found
+    if (!user) {
+      return next(new AppError(send_v_code_errors[locale].user_not_found, 401));
+    }
+
+    const verification_code = await generate_unique_verification_code();
+    user.verification_code = verification_code;
+    user.verification_code_expires_at = new Date(Date.now() + 10 * 60 * 1000);
+
+    try {
+      // Save the user
+      await user_repo.save(user);
+
+      // Send verification code to user's phone number
+      await send_sms_to_phone_number(
+        "This is test from Eskiz",
+        user.phone_number
+      );
+
+      return res.status(200).json({
+        status: "success",
+        message: signup_responses[locale].sent_to_phone_number,
+      });
+    } catch (error) {
+      console.log("error:", error);
+      const error_text = signup_errors[locale].sending_verification_code;
+      return next(new AppError(error_text, 500));
+    }
+  }
+);
