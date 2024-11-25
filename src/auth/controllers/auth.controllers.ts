@@ -5,6 +5,7 @@ import { get_locale } from "../../utils/shared.functions";
 import {
   login_errors,
   protect_routes_errors,
+  restrict_to_errors,
   signup_errors,
   token_errors,
   verify_errors,
@@ -507,3 +508,17 @@ export const logout = catch_async(
     return res.sendStatus(200);
   }
 );
+
+// RESTRICT ROUTES
+export const restrict_to = (roles: ["user", "admin"]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!roles.includes(req.user.role)) {
+      // Get locale from cookies and validate it
+      const locale = get_locale(req.cookies.user_locale);
+
+      // Send error
+      return next(new AppError(restrict_to_errors[locale].not_allowed, 403));
+    }
+    next();
+  };
+};

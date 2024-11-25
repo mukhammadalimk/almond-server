@@ -163,6 +163,23 @@ export const protect_routes_errors: Record<Locale, PotectRoutesErrorsTypes> = {
   },
 };
 
+// --------------------------------------------------------------------------------- //
+export interface RestrictToErrorsTypes {
+  not_allowed: string;
+}
+
+export const restrict_to_errors: Record<Locale, RestrictToErrorsTypes> = {
+  uz: {
+    not_allowed: "Sizda bu amalni bajarish uchun ruxsat yo‘q.",
+  },
+  ru: {
+    not_allowed: "У вас нет разрешения на выполнение этого действия.",
+  },
+  en: {
+    not_allowed: "You do not have permission to do this action.",
+  },
+};
+
 export const token_errors = {
   invalid_token: {
     is_token_error: true,
