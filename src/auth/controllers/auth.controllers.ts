@@ -2,30 +2,28 @@ import { CookieOptions, NextFunction, Request, Response } from "express";
 import dotenv from "dotenv";
 import catch_async from "../../utils/catch.async";
 import { get_locale } from "../../utils/shared.functions";
-import { Locale } from "../../types/shared.types";
 import { signup_errors, verify_errors } from "../constants/auth.errors";
-import validator from "validator";
-import { UnverifiedUser, VerifiedUser } from "../../users/user.model";
 import AppError from "../../utils/app.error";
 import {
   create_unique_username,
   generate_unique_verification_code,
   remove_empty_properties,
-} from "../../utils/auth";
+} from "../utils/auth";
 import { send_email } from "../../utils/email";
 import {
   send_verification_email_texts,
   signup_responses,
 } from "../constants/auth.constants";
-import Mongoose from "mongoose";
 import jwt from "jsonwebtoken";
-import { IUser } from "../../types/IUser";
 import { send_sms_to_phone_number } from "../../utils/phone_number";
 import {
-  validate_name_and_password,
   validate_signup_with_email_body,
   validate_signup_with_phone_number_body,
 } from "../validators/auth.validotors";
+import AppDataSource from "../../data-source";
+import { User } from "../../entities/User";
+import { add_session_to_user } from "./session.controllers";
+import axios from "axios";
 dotenv.config();
 
 const { JWT_COOKIE_EXPIRES_IN, REFRESH_TOKEN_SECRET, ACCESS_TOKEN_SECRET } =
@@ -33,29 +31,33 @@ const { JWT_COOKIE_EXPIRES_IN, REFRESH_TOKEN_SECRET, ACCESS_TOKEN_SECRET } =
 
 // CREATE AND SEND TOKEN
 export const create_send_token = async (
-  user: IUser,
+  user: User,
   req: Request,
   res: Response
 ) => {
   // Generate access and refresh tokens
-  const access_token = jwt.sign({ id: user._id }, ACCESS_TOKEN_SECRET, {
+  const access_token = jwt.sign({ id: user.id }, ACCESS_TOKEN_SECRET, {
     expiresIn: 60 * 60 * 24,
   });
 
-  const refresh_token = jwt.sign({ id: user._id }, REFRESH_TOKEN_SECRET, {
+  const refresh_token = jwt.sign({ id: user.id }, REFRESH_TOKEN_SECRET, {
     expiresIn: "60 days",
   });
 
+  // TODO: it will be modified
+  // Get location of the user
+  const response = await axios.get(`http://ip-api.com/json/124.5.74.47`);
+  const { city, regionName, country } = response.data;
+
+  const session_data = {
+    user: user.id,
+    ip_address: "124.5.74.47",
+    address: `${city} ${regionName} ${country}`,
+    refresh_token,
+  };
+
   // Save refresh_token to the user
-  await VerifiedUser.findByIdAndUpdate(user._id, {
-    $push: {
-      all_sessions: {
-        refresh_token,
-        logged_at: new Date(),
-        last_seen: new Date(),
-      },
-    },
-  });
+  await add_session_to_user(session_data);
 
   // Set jwt token to cookies
   const cookieOptions: CookieOptions = {
@@ -73,9 +75,8 @@ export const create_send_token = async (
   res.clearCookie("_almond_country_code_");
   res.clearCookie("_almond_phone_number_");
 
-  // Remove password and refresh_token from output
   user.password = undefined;
-  user.all_sessions = undefined;
+  user.password_changed_at = undefined;
 
   return res.status(200).json({ status: "success", access_token, data: user });
 };
@@ -83,14 +84,19 @@ export const create_send_token = async (
 // SIGN UP WITH EMAIL
 export const signup_with_email = catch_async(
   async (req: Request, res: Response, next: NextFunction) => {
-    const session = await Mongoose.startSession(); // Start a session
-    session.startTransaction(); // Start a transaction
-
-    // Get locale from cookies and validate it
     const locale = get_locale(req.cookies.user_locale);
 
+    const { email, first_name, password } = req.body;
+
+    let errors = validate_signup_with_email_body(req.body, locale);
+
+    const has_error = Object.values(errors).some((value) => value !== "");
+    if (has_error) {
+      return next(new AppError(remove_empty_properties(errors), 400));
+    }
+
     // Cookie options to set email to cookies in browser
-    const cookieOptions: CookieOptions = {
+    const cookie_options: CookieOptions = {
       expires: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
       // httpOnly: true, // this ensures that cookie can not be modifed by the browser,
       // sameSite: "strict",
@@ -98,115 +104,96 @@ export const signup_with_email = catch_async(
       // secure: req.secure || req.headers["x-forwarded-proto"] === "https",
     };
 
-    try {
-      // Get necessary data from request
-      const { email, first_name, password } = req.body;
+    const user_repo = AppDataSource.getRepository(User);
 
-      let errors = validate_signup_with_email_body(req.body, locale);
+    // Return an error if user with the email already exists
+    const existing_user = await user_repo.findOne({
+      where: { email },
+    });
 
-      // Return errors if there is any
-      const has_error = Object.values(errors).some((value) => value !== "");
-      if (has_error) {
-        return next(new AppError(remove_empty_properties(errors), 400));
-      }
+    if (existing_user?.account_status === "active") {
+      return next(
+        new AppError(signup_errors[locale].email_already_exists, 400)
+      );
+    }
 
-      // Check if user with the email already exists
-      const verified_user: IUser = await VerifiedUser.findOne({ email });
-      if (verified_user) {
-        return next(
-          new AppError(signup_errors[locale].email_already_exists, 400)
-        );
-      }
+    const verification_code = await generate_unique_verification_code();
 
-      // Create a unique verification code
-      const verification_code = await generate_unique_verification_code();
+    if (existing_user?.account_status === "pending") {
+      existing_user.verification_code = verification_code;
+      existing_user.verification_code_expires_at = new Date(
+        Date.now() + 10 * 60 * 1000
+      );
 
-      // Check if the user has tried to sign up in the last 7 days
-      const unverified_user: IUser = await UnverifiedUser.findOne({ email });
+      await user_repo.save(existing_user);
 
-      let new_user: IUser;
-      // If yes, generate new verification code and send it to user's phone number
-      if (unverified_user) {
-        unverified_user.verification_code = verification_code;
-        unverified_user.verification_code_expires_at = new Date(
-          Date.now() + 10 * 60 * 1000
-        );
+      await send_email({
+        from: "Almond <mailtrap@almond.uz>",
+        to: existing_user.email,
+        subject: send_verification_email_texts[locale].for_sign_up.subject,
+        text:
+          send_verification_email_texts[locale].for_sign_up.text +
+          existing_user.verification_code,
+      });
 
-        await unverified_user.save({ validateBeforeSave: false });
-
-        // Send verification code to user's email
-        await send_email({
-          from: "Almond <mailtrap@almond.uz>",
-          to: unverified_user.email,
-          subject: send_verification_email_texts[locale].for_sign_up.subject,
-          text:
-            send_verification_email_texts[locale].for_sign_up.text +
-            unverified_user.verification_code,
-        });
-
-        res.cookie("_almond_email_", unverified_user.email, cookieOptions);
-      } else {
-        // Create user in the database
-        new_user = await UnverifiedUser.create(
-          [
-            {
-              email,
-              first_name,
-              password,
-              account_status: "pending",
-              lang: locale,
-              verification_code,
-              verification_code_expires_at: new Date(
-                Date.now() + 10 * 60 * 1000
-              ),
-            },
-          ],
-          { session }
-        )[0];
-
-        // Send verification code to user's email
-        await send_email({
-          from: "Almond <mailtrap@almond.uz>",
-          to: new_user.email,
-          subject: send_verification_email_texts[locale].for_sign_up.subject,
-          text:
-            send_verification_email_texts[locale].for_sign_up.text +
-            new_user.verification_code,
-        });
-
-        res.cookie("_almond_email_", new_user.email, cookieOptions);
-      }
-
-      await session.commitTransaction(); // Commit if everything succeeds
-      session.endSession();
+      res.cookie("_almond_email_", existing_user.email, cookie_options);
 
       return res.status(201).json({
         status: "success",
         message: signup_responses[locale].sent_to_email,
       });
-    } catch (error) {
-      console.log("error:", error);
-      await session.abortTransaction(); // Rollback on failure
-      session.endSession();
-
-      return next(
-        new AppError(signup_errors[locale].sending_verification_code, 500)
-      );
     }
+
+    const username = await create_unique_username(first_name);
+
+    const user = user_repo.create({
+      email,
+      first_name,
+      password,
+      username,
+      verification_code,
+      verification_code_expires_at: new Date(Date.now() + 10 * 60 * 1000),
+    });
+
+    await user_repo.save(user);
+
+    await send_email({
+      from: "Almond <mailtrap@almond.uz>",
+      to: user.email,
+      subject: send_verification_email_texts[locale].for_sign_up.subject,
+      text:
+        send_verification_email_texts[locale].for_sign_up.text +
+        user.verification_code,
+    });
+
+    res.cookie("_almond_email_", user.email, cookie_options);
+
+    return res.status(201).json({
+      status: "success",
+      message: signup_responses[locale].sent_to_email,
+    });
   }
 );
 
 // SIGN UP WITH PHONE NUMBER
 export const signup_with_phone_number = catch_async(
   async (req: Request, res: Response, next: NextFunction) => {
-    const session = await Mongoose.startSession(); // Start a session
-    session.startTransaction(); // Start a transaction
-
     // Get locale from cookies and validate it
     const locale = get_locale(req.cookies.user_locale);
 
+    let errors = validate_signup_with_phone_number_body(req.body, locale);
+
+    // Return errors if there is any
+    const has_error = Object.values(errors).some((value) => value !== "");
+    if (has_error) {
+      return next(new AppError(remove_empty_properties(errors), 400));
+    }
+
+    // Get necessary data from request
+    const { first_name, password, country_code, phone_number } = req.body;
+
     // Cookie options to set phone number to cookies in browser
-    const cookieOptions: CookieOptions = {
+    const cookie_options: CookieOptions = {
       expires: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
       // httpOnly: true, // this ensures that cookie can not be modifed by the browser,
       // sameSite: "strict",
@@ -214,119 +201,77 @@ export const signup_with_phone_number = catch_async(
       // secure: req.secure || req.headers["x-forwarded-proto"] === "https",
     };
 
-    try {
-      // Get necessary data from request
-      const { first_name, password, phone_number_details } = req.body;
+    const user_repo = AppDataSource.getRepository(User);
 
-      let errors = validate_signup_with_phone_number_body(req.body, locale);
+    // Return an error if user with the email already exists
+    const existing_user = await user_repo.findOne({
+      where: { country_code, phone_number },
+    });
 
-      // Return errors if there is any
-      const has_error = Object.values(errors).some((value) => value !== "");
-      if (has_error) {
-        return next(new AppError(remove_empty_properties(errors), 400));
-      }
+    if (existing_user?.account_status === "active") {
+      return next(
+        new AppError(signup_errors[locale].phone_number_already_exists, 400)
+      );
+    }
 
-      // Check if user with the coming phone number already exists
-      const verified_user: IUser = await VerifiedUser.findOne({
-        phone_number_details,
-      });
+    const verification_code = await generate_unique_verification_code();
 
-      if (verified_user) {
-        return next(
-          new AppError(signup_errors[locale].phone_number_already_exists, 400)
-        );
-      }
+    if (existing_user?.account_status === "pending") {
+      existing_user.verification_code = verification_code;
+      existing_user.verification_code_expires_at = new Date(
+        Date.now() + 10 * 60 * 1000
+      );
 
-      // Check if user with the coming phone number already exists
-      const unverified_user: IUser = await UnverifiedUser.findOne({
-        phone_number_details,
-      });
+      await user_repo.save(existing_user);
 
-      // Create a unique verification code
-      const verification_code = await generate_unique_verification_code();
+      await send_sms_to_phone_number(
+        "This is test from Eskiz",
+        existing_user.phone_number
+      );
 
-      let new_user: IUser;
-
-      // If yes, generate new verification code and send it to user's phone number
-      if (unverified_user) {
-        unverified_user.verification_code = verification_code;
-        unverified_user.verification_code_expires_at = new Date(
-          Date.now() + 10 * 60 * 1000
-        );
-
-        await unverified_user.save({ validateBeforeSave: false });
-
-        await send_sms_to_phone_number(
-          "This is test from Eskiz",
-          unverified_user.phone_number_details.phone_number
-        );
-
-        res.cookie(
-          "_almond_phone_number_",
-          unverified_user.phone_number_details.phone_number,
-          cookieOptions
-        );
-        res.cookie(
-          "_almond_country_code_",
-          unverified_user.phone_number_details.country_code,
-          cookieOptions
-        );
-      } else {
-        // Create user in the database
-        new_user = await UnverifiedUser.create(
-          [
-            {
-              first_name,
-              password,
-              account_status: "pending",
-              phone_number_details: {
-                country_code: phone_number_details.country_code,
-                phone_number: phone_number_details.phone_number,
-              },
-              lang: locale,
-              verification_code,
-              verification_code_expires_at: new Date(
-                Date.now() + 10 * 60 * 1000
-              ),
-            },
-          ],
-          { session }
-        )[0];
-
-        await send_sms_to_phone_number(
-          "This is test from Eskiz",
-          new_user.phone_number_details.phone_number
-        );
-
-        res.cookie(
-          "_almond_phone_number_",
-          new_user.phone_number_details.phone_number,
-          cookieOptions
-        );
-        res.cookie(
-          "_almond_country_code_",
-          new_user.phone_number_details.country_code,
-          cookieOptions
-        );
-      }
-
-      // Commit if everything succeeds
-      await session.commitTransaction();
-      session.endSession();
+      res.cookie(
+        "_almond_phone_number_",
+        existing_user.phone_number,
+        cookie_options
+      );
+      res.cookie(
+        "_almond_country_code_",
+        existing_user.country_code,
+        cookie_options
+      );
 
       return res.status(201).json({
         status: "success",
         message: signup_responses[locale].sent_to_phone_number,
       });
-    } catch (error) {
-      console.log("error:", error);
-      await session.abortTransaction(); // Rollback on failure
-      session.endSession();
-
-      return next(
-        new AppError(signup_errors[locale].sending_verification_code, 500)
-      );
     }
+
+    const username = await create_unique_username(first_name);
+
+    const user = user_repo.create({
+      country_code,
+      phone_number,
+      first_name,
+      password,
+      username,
+      verification_code,
+      verification_code_expires_at: new Date(Date.now() + 10 * 60 * 1000),
+    });
+
+    await user_repo.save(user);
+
+    await send_sms_to_phone_number(
+      "This is test from Eskiz",
+      user.phone_number
+    );
+
+    res.cookie("_almond_phone_number_", user.phone_number, cookie_options);
+    res.cookie("_almond_country_code_", user.country_code, cookie_options);
+
+    return res.status(201).json({
+      status: "success",
+      message: signup_responses[locale].sent_to_phone_number,
+    });
   }
 );
 
@@ -334,7 +279,6 @@ export const verify = catch_async(
   async (req: Request, res: Response, next: NextFunction) => {
     const { verification_code } = req.body;
 
-    // TODO: I will think about changing it.
     const email = req.cookies._almond_email_;
     const country_code = req.cookies._almond_country_code_;
     const phone_number = req.cookies._almond_phone_number_;
@@ -352,18 +296,25 @@ export const verify = catch_async(
       return next(new AppError(verify_errors[locale].code_not_numeric, 400));
     }
 
-    let user: IUser;
+    const user_repo = AppDataSource.getRepository(User);
 
     // Get user based on verification code and email/phone number
-    if (email) {
-      user = await UnverifiedUser.findOne({ verification_code, email }).select(
-        "+verification_code_expires_at +password"
-      );
-    } else if (phone_number) {
-      user = await UnverifiedUser.findOne({
-        verification_code,
-        phone_number_details: { country_code, phone_number },
-      }).select("+verification_code_expires_at +password");
+    const user: User = await user_repo
+      .createQueryBuilder("user")
+      .addSelect("user.verification_code")
+      .addSelect("user.verification_code_expires_at")
+      .where({ verification_code })
+      .getOne();
+
+    // Return an error is the user changes or deletes the email, country_code or phone_number
+    if (email && user?.email !== email) {
+      return next(new AppError(verify_errors[locale].cookies_modified, 400));
+    } else if (
+      phone_number &&
+      (user?.country_code !== country_code ||
+        user?.phone_number !== phone_number)
+    ) {
+      return next(new AppError(verify_errors[locale].cookies_modified, 400));
     }
 
     // Check if verification code is valid
@@ -376,24 +327,18 @@ export const verify = catch_async(
       return next(new AppError(verify_errors[locale].code_expired, 400));
     }
 
-    // Create a unique username based on user's name
-    const username = await create_unique_username(user.first_name);
-
     // Delete the user from unverifiedusers collection and create new user in users collection
-    user.verification_code = undefined;
-    user.verification_code_expires_at = undefined;
+    user.verification_code = null;
+    user.verification_code_expires_at = null;
     user.account_status = "active";
-    user.username = username;
     if (phone_number) {
       user.is_verified_user = true;
       user.is_phone_number_verified = true;
     }
-    await UnverifiedUser.findByIdAndDelete(user._id);
-    user._id = undefined;
-    user = JSON.parse(JSON.stringify(user));
-    const new_user = await VerifiedUser.create(user);
+
+    const updated_user = await user_repo.save(user);
 
     // If everything is okay, verify user and send token
-    create_send_token(new_user, req, res);
+    create_send_token(updated_user, req, res);
   }
 );

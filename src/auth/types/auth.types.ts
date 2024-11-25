@@ -1,10 +1,8 @@
 export interface SignupWithPhoneNumberRequestBody {
   first_name: string;
   password: string;
-  phone_number_details: {
-    country_code: string;
-    phone_number: string;
-  };
+  phone_number: string;
+  country_code: string;
 }
 
 export interface SignupWithEmailRequestBody {

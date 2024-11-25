@@ -5,6 +5,7 @@ import {
   SignupWithEmailRequestBody,
   SignupWithPhoneNumberRequestBody,
 } from "../types/auth.types";
+import bcrypt from "bcrypt";
 
 // Validate first_name and password
 export const validate_name_and_password = (
@@ -57,17 +58,23 @@ export const validate_signup_with_phone_number_body = (
   body: SignupWithPhoneNumberRequestBody,
   locale: Locale
 ): Record<string, string> => {
-  const { phone_number_details, first_name, password } = body;
+  // TODO: validate country_code
+  const { country_code, phone_number, first_name, password } = body;
 
+  // Validate name and password
   let errors = validate_name_and_password(first_name, password, locale);
 
   // Check the validation of the phone number
-  if (
-    phone_number_details?.phone_number &&
-    phone_number_details?.phone_number.length !== 9
-  ) {
+  if (phone_number?.length !== 9) {
     errors.phone_number = signup_errors[locale].invalid_phone_number;
   }
 
   return errors;
+};
+
+export const validate_password = async (
+  candidate_password: string,
+  current_password: string
+): Promise<boolean> => {
+  return bcrypt.compare(candidate_password, current_password);
 };

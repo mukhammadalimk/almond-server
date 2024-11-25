@@ -88,6 +88,7 @@ export interface VerifyErrorsTypes {
   code_invalid: string;
   code_expired: string;
   code_not_numeric: string;
+  cookies_modified: string;
 }
 
 export const verify_errors: Record<Locale, VerifyErrorsTypes> = {
@@ -97,6 +98,8 @@ export const verify_errors: Record<Locale, VerifyErrorsTypes> = {
     code_expired: "Tasdiqlash kodi muddati tugagan. Iltimos, yangi kod oling.",
     code_not_numeric:
       "Tasdiqlash kodi faqat raqamlardan iborat bo'lishi kerak.",
+    cookies_modified:
+      "Ruxsatsiz o'zgarishlar aniqlandi. Iltimos, qayta ro'yxatdan o'tishga urinib ko'ring.",
   },
   ru: {
     code_absent: "Пожалуйста, введите код подтверждения.",
@@ -104,12 +107,16 @@ export const verify_errors: Record<Locale, VerifyErrorsTypes> = {
     code_expired:
       "Срок действия кода подтверждения истек. Пожалуйста, получите новый код.",
     code_not_numeric: "Код подтверждения должен состоять только из цифр.",
+    cookies_modified:
+      "Обнаружены несанкционированные изменения. Пожалуйста, попробуйте зарегистрироваться еще раз.",
   },
   en: {
     code_absent: "Please enter the verification code.",
     code_invalid: "Invalid verification code.",
     code_expired: "The verification code has expired. Please get a new code.",
     code_not_numeric: "The verification code should consists of only numbers.",
+    cookies_modified:
+      "Unauthorized changes detected. Please try to sign up again.",
   },
 };
 
