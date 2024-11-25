@@ -78,3 +78,15 @@ export const validate_password = async (
 ): Promise<boolean> => {
   return bcrypt.compare(candidate_password, current_password);
 };
+
+export const password_changed_after_token = (
+  password_changed_at: Date,
+  token_issued_time: number
+) => {
+  const password_changed_time = parseInt(
+    String(password_changed_at.getTime() / 1000),
+    10
+  );
+
+  return token_issued_time < password_changed_time;
+};

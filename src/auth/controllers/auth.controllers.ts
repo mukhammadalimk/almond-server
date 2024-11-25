@@ -4,7 +4,9 @@ import catch_async from "../../utils/catch.async";
 import { get_locale } from "../../utils/shared.functions";
 import {
   login_errors,
+  protect_routes_errors,
   signup_errors,
+  token_errors,
   verify_errors,
 } from "../constants/auth.errors";
 import AppError from "../../utils/app.error";
@@ -18,9 +20,10 @@ import {
   send_verification_email_texts,
   signup_responses,
 } from "../constants/auth.constants";
-import jwt from "jsonwebtoken";
+import jwt, { JwtPayload } from "jsonwebtoken";
 import { send_sms_to_phone_number } from "../../utils/phone_number";
 import {
+  password_changed_after_token,
   validate_password,
   validate_signup_with_email_body,
   validate_signup_with_phone_number_body,
@@ -29,6 +32,7 @@ import AppDataSource from "../../data-source";
 import { User } from "../../entities/User";
 import { add_session_to_user } from "./session.controllers";
 import axios from "axios";
+import { Session } from "../../entities/Session";
 dotenv.config();
 
 const { JWT_COOKIE_EXPIRES_IN, REFRESH_TOKEN_SECRET, ACCESS_TOKEN_SECRET } =
@@ -280,6 +284,7 @@ export const signup_with_phone_number = catch_async(
   }
 );
 
+// VERIFY SIGN UP
 export const verify = catch_async(
   async (req: Request, res: Response, next: NextFunction) => {
     const { verification_code } = req.body;
@@ -348,6 +353,7 @@ export const verify = catch_async(
   }
 );
 
+// LOGIN WITH EMAIL OR PHONE NUMBER
 export const login = catch_async(
   async (req: Request, res: Response, next: NextFunction) => {
     const { email, phone_number, country_code, password } = req.body;
@@ -391,5 +397,95 @@ export const login = catch_async(
 
     // If everything is okay, send token and log user in
     create_send_token(user, req, res);
+  }
+);
+
+// PROTECT ROUTES
+export const protect_routes = catch_async(
+  async (req: Request, res: Response, next: NextFunction) => {
+    // Get access_token from headers
+    let access_token: string;
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith("Bearer")
+    ) {
+      access_token = req.headers.authorization.split(" ")[1];
+    }
+
+    // Get refresh_token from cookies
+    const refresh_token: string = req.cookies._almond_key_;
+
+    // Get locale from cookies and validate it
+    const locale = get_locale(req.cookies.user_locale);
+
+    // Return 401 (Unauthorized) and clear jwt from cookies if access_token does not exist in headers or refresh_token does not exist in cookies
+    if (!access_token || !refresh_token) {
+      res.clearCookie("_almond_key_");
+      return next(new AppError(token_errors.invalid_token, 401));
+    }
+
+    // Verify access_token
+    try {
+      jwt.verify(access_token, ACCESS_TOKEN_SECRET);
+    } catch (error) {
+      // Send 403 (Forbidden) if access_token has expired, and client needs to send request to "/new-access-token"
+      if (error.name === "TokenExpiredError") return res.sendStatus(403);
+
+      // Send 401 (Unauthorized) if access_token is invalid
+      if (error.name === "JsonWebTokenError") {
+        res.clearCookie("_almond_key_");
+        return next(new AppError(token_errors.invalid_token, 401));
+      }
+    }
+
+    let decoded: JwtPayload | string;
+    const session_repo = AppDataSource.getRepository(Session);
+
+    // Verify refresh_token
+    try {
+      decoded = jwt.verify(refresh_token, REFRESH_TOKEN_SECRET);
+    } catch (error) {
+      if (error.name === "TokenExpiredError") {
+        // Find the user and remove the refresh token from the user
+        await session_repo.delete({ refresh_token: "your-refresh-token" });
+
+        // Revoke the refresh token and send an error
+        res.clearCookie("_almond_key_");
+        return next(new AppError(token_errors.expired_token, 403));
+      } else if (error.name === "JsonWebTokenError") {
+        // Revoke the refresh token and send an error
+        res.clearCookie("_almond_key_");
+        return next(new AppError(token_errors.invalid_token, 401));
+      }
+      return next(new AppError(error.name, 500));
+    }
+
+    // Check if user still exists
+    // Find the session by refresh_token and include the associated user
+    const { user } = await session_repo.findOne({
+      where: { refresh_token },
+      relations: ["user"], // Include the user relationship
+    });
+
+    if (!user) {
+      res.clearCookie("_almond_key_");
+      return next(new AppError(token_errors.invalid_token, 401));
+    }
+
+    // Check if user changed password after refresh_token was issued
+    if (
+      user.password_changed_at &&
+      password_changed_after_token(
+        user.password_changed_at,
+        (decoded as JwtPayload).iat
+      )
+    ) {
+      const error = protect_routes_errors[locale].user_changed_password;
+      return next(new AppError({ is_token_error: true, message: error }, 401));
+    }
+
+    // If everything is okay, allow access
+    req.user = user;
+    next();
   }
 );
