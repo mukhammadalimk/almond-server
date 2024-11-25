@@ -348,27 +348,44 @@ export const verify = catch_async(
   }
 );
 
-// LOGIN WITH EMAIL
-export const login_with_email = catch_async(
+export const login = catch_async(
   async (req: Request, res: Response, next: NextFunction) => {
-    // Get required data from req.body
-    const { email, password } = req.body;
+    const { email, phone_number, country_code, password } = req.body;
 
     // Get locale from cookies and validate it
     const locale = get_locale(req.cookies.user_locale);
 
+    // Validate input: ensure email or phone number is provided
+    if (!email && !(phone_number && country_code)) {
+      return next(new AppError(login_errors[locale].missing_credentials, 400));
+    }
+
     const user_repo = AppDataSource.getRepository(User);
 
-    // Get user from database
-    const user: User = await user_repo
+    // Fetch the user based on login method
+    let user_credentials: {
+      email?: string;
+      phone_number?: string;
+      country_code?: string;
+    } = {};
+
+    if (email) {
+      user_credentials = { email };
+    } else if (phone_number && country_code) {
+      user_credentials = { phone_number, country_code };
+    }
+
+    const user = await user_repo
       .createQueryBuilder("user")
       .addSelect("user.password")
-      .where({ email })
+      .where(user_credentials)
       .getOne();
 
     // Return an error if user is not found or password is incorrect
     if (!user || !(await validate_password(password, user.password))) {
-      const error = login_errors[locale].incorrect_credentials_email;
+      const error = email
+        ? login_errors[locale].incorrect_credentials_email
+        : login_errors[locale].incorrect_credentials_phone_number;
       return next(new AppError(error, 401));
     }
 

@@ -62,20 +62,24 @@ export const signup_errors: Record<Locale, SignupErrorsTypes> = {
 
 // --------------------------------------------------------------------------------- //
 export interface LoginErrorsTypes {
+  missing_credentials: string;
   incorrect_credentials_email: string;
   incorrect_credentials_phone_number: string;
 }
 
 export const login_errors: Record<Locale, LoginErrorsTypes> = {
   uz: {
+    missing_credentials: "Iltimos, kerakli ma'lumotlarni kiriting.",
     incorrect_credentials_email: "Parol yoki elektron pochta noto'g'ri.",
     incorrect_credentials_phone_number: "Parol yoki telefon raqam noto'g'ri.",
   },
   ru: {
+    missing_credentials: "Пожалуйста, введите необходимую информацию.",
     incorrect_credentials_email: "Пароль или адрес электронной почты неверны.",
     incorrect_credentials_phone_number: "Пароль или номер телефона неверный.",
   },
   en: {
+    missing_credentials: "Please enter required data.",
     incorrect_credentials_email: "Password or email is not correct.",
     incorrect_credentials_phone_number:
       "Password or phone number is not correct.",
