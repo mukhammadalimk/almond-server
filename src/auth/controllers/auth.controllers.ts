@@ -489,3 +489,21 @@ export const protect_routes = catch_async(
     next();
   }
 );
+
+// LOGOUT
+export const logout = catch_async(
+  async (req: Request, res: Response, next: NextFunction) => {
+    // Get refresh_token from the cookies
+    const refresh_token = req.cookies._almond_key_;
+
+    // Get session repository
+    const session_repo = AppDataSource.getRepository(Session);
+
+    // Delete the session
+    await session_repo.delete({ refresh_token });
+
+    // Revoke the refresh token from cookies and send 200 (OK)
+    res.clearCookie("_almond_key_");
+    return res.sendStatus(200);
+  }
+);
