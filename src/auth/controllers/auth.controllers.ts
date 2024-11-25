@@ -2,7 +2,11 @@ import { CookieOptions, NextFunction, Request, Response } from "express";
 import dotenv from "dotenv";
 import catch_async from "../../utils/catch.async";
 import { get_locale } from "../../utils/shared.functions";
-import { signup_errors, verify_errors } from "../constants/auth.errors";
+import {
+  login_errors,
+  signup_errors,
+  verify_errors,
+} from "../constants/auth.errors";
 import AppError from "../../utils/app.error";
 import {
   create_unique_username,
@@ -17,6 +21,7 @@ import {
 import jwt from "jsonwebtoken";
 import { send_sms_to_phone_number } from "../../utils/phone_number";
 import {
+  validate_password,
   validate_signup_with_email_body,
   validate_signup_with_phone_number_body,
 } from "../validators/auth.validotors";
@@ -340,5 +345,34 @@ export const verify = catch_async(
 
     // If everything is okay, verify user and send token
     create_send_token(updated_user, req, res);
+  }
+);
+
+// LOGIN WITH EMAIL
+export const login_with_email = catch_async(
+  async (req: Request, res: Response, next: NextFunction) => {
+    // Get required data from req.body
+    const { email, password } = req.body;
+
+    // Get locale from cookies and validate it
+    const locale = get_locale(req.cookies.user_locale);
+
+    const user_repo = AppDataSource.getRepository(User);
+
+    // Get user from database
+    const user: User = await user_repo
+      .createQueryBuilder("user")
+      .addSelect("user.password")
+      .where({ email })
+      .getOne();
+
+    // Return an error if user is not found or password is incorrect
+    if (!user || !(await validate_password(password, user.password))) {
+      const error = login_errors[locale].incorrect_credentials_email;
+      return next(new AppError(error, 401));
+    }
+
+    // If everything is okay, send token and log user in
+    create_send_token(user, req, res);
   }
 );
