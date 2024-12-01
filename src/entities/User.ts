@@ -7,7 +7,6 @@ import {
   ManyToMany,
   JoinTable,
   BeforeInsert,
-  BeforeUpdate,
   OneToMany,
 } from "typeorm";
 import {
@@ -21,7 +20,6 @@ import {
   IsNumberString,
   IsLowercase,
   IsString,
-  IsEnum,
   IsBoolean,
 } from "class-validator";
 
@@ -33,8 +31,8 @@ export class User {
   @PrimaryGeneratedColumn("uuid")
   id: string;
 
-  // @PrimaryGeneratedColumn("increment", { type: "int", unsigned: true })
-  // ordinal_number: number;
+  @Column({ type: "int", generated: "increment", unique: true })
+  ordinal_number: number; // Auto-increment integer column for legacy ID
 
   @Column({ length: 25, type: "varchar" })
   first_name: string;

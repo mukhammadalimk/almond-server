@@ -328,10 +328,11 @@ export const verify = catch_async(
       .getOne();
 
     // Return an error is the user changes or deletes the email, country_code or phone_number
-    if (email && user?.email !== email) {
+    if (email && user && user?.email !== email) {
       return next(new AppError(verify_errors[locale].cookies_modified, 400));
     } else if (
       phone_number &&
+      user &&
       (user?.country_code !== country_code ||
         user?.phone_number !== phone_number)
     ) {
@@ -520,7 +521,7 @@ export const logout = catch_async(
 );
 
 // RESTRICT ROUTES
-export const restrict_to = (roles: ["user", "admin"]) => {
+export const restrict_to = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!roles.includes(req.user.role)) {
       // Get locale from cookies and validate it
