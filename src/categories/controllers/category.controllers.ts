@@ -101,3 +101,50 @@ export const get_category = catch_async(
       .json({ status: "success", data: customized_category });
   }
 );
+
+// GEY CATEGORY WITH FULL HIERARCHY
+export const get_category_with_hierarchy = catch_async(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { category_id } = req.params;
+
+    // Get locale from cookies and validate it
+    const locale = get_locale(req.cookies.user_locale);
+
+    const category_repo = AppDataSource.getRepository(Category);
+
+    // Fetch the current category with parent relationships
+    const category = await category_repo.findOne({
+      where: { id: category_id },
+      relations: ["parent_category"],
+    });
+
+    if (!category) {
+      return next(new AppError("Category not found", 404));
+    }
+
+    const hierarchy = [];
+    let currentCategory = category;
+
+    // Traverse up the hierarchy to build the full path
+    while (currentCategory) {
+      hierarchy.unshift({
+        slug: currentCategory.slug,
+        name: currentCategory.translations.find((t) => t.lang === locale)?.name,
+        id: currentCategory.id,
+        full_slug: currentCategory.full_slug,
+        legacy_id: currentCategory.legacy_id,
+      });
+
+      if (currentCategory.parent_category === null) {
+        break;
+      }
+
+      currentCategory = await category_repo.findOne({
+        where: { id: currentCategory.parent_category?.id },
+        relations: ["parent_category"],
+      });
+    }
+
+    return res.status(200).json({ status: "success", data: hierarchy });
+  }
+);
