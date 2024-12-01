@@ -60,3 +60,44 @@ export const create_category = catch_async(
     return res.status(201).json({ status: "success", data: new_category });
   }
 );
+
+// GET CATEGORY
+export const get_category = catch_async(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { category_id } = req.params;
+
+    // Get locale from cookies and validate it
+    const locale = get_locale(req.cookies.user_locale);
+
+    // Get categiry repository
+    const category_repo = AppDataSource.getRepository(Category);
+
+    // Find category from databasse
+    const category = await category_repo.findOne({
+      where: { id: category_id },
+    });
+
+    if (!category) {
+      return next(new AppError("Category not found.", 404));
+    }
+
+    // Extract the name based on locale
+    const translation = category.translations.find((t) => t.lang === locale);
+    const name = translation
+      ? translation.name
+      : category.translations.find((t) => t.lang === locale).name;
+
+    // Customize the response
+    const customized_category = {
+      id: category.id,
+      legacy_id: category.legacy_id,
+      slug: category.slug,
+      full_slug: category.full_slug,
+      name,
+    };
+
+    return res
+      .status(200)
+      .json({ status: "success", data: customized_category });
+  }
+);
