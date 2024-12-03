@@ -5,6 +5,7 @@ import { Category } from "../../entities/Category";
 import slugify from "slugify";
 import AppError from "../../utils/app.error";
 import { get_locale } from "../../utils/shared.functions";
+import { customize_translations } from "../utils/helper";
 
 // CREATE CATEGORY
 export const create_category = catch_async(
@@ -146,5 +147,38 @@ export const get_category_with_hierarchy = catch_async(
     }
 
     return res.status(200).json({ status: "success", data: hierarchy });
+  }
+);
+
+// GET ALL CATEGORIES IN JUST ONE ARRAY
+export const get_all_categories = catch_async(
+  async (req: Request, res: Response, next: NextFunction) => {
+    // Get locale from cookies and validate it
+    const locale = get_locale(req.cookies.user_locale);
+
+    // Get category repository
+    const category_repo = AppDataSource.getRepository(Category);
+
+    // Find categories from databasse
+    const categories = await category_repo.find();
+
+    let customized_categories = [];
+    for (let i = 0; i < categories.length; i++) {
+      const translation = categories[i].translations.find(
+        (t) => t.lang === locale
+      );
+
+      customized_categories.push({
+        id: categories[i].id,
+        legacy_id: categories[i].legacy_id,
+        slug: categories[i].slug,
+        full_slug: categories[i].full_slug,
+        name: translation.name,
+      });
+    }
+
+    return res
+      .status(200)
+      .json({ status: "success", data: customized_categories });
   }
 );
