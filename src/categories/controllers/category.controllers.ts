@@ -182,3 +182,49 @@ export const get_all_categories = catch_async(
       .json({ status: "success", data: customized_categories });
   }
 );
+
+// This controller returns categories tree and we will use it to show the categories in frontend (Parent->children->children->children)
+export const get_categories_with_children = catch_async(
+  async (req: Request, res: Response, next: NextFunction) => {
+    // Get locale from cookies and validate it
+    const locale = get_locale(req.cookies.user_locale);
+
+    // Get category repository
+    const category_repo = AppDataSource.getRepository(Category);
+
+    // Fetch all top-level (parentless) categories
+    const root_categories = await category_repo
+      .createQueryBuilder("category")
+      .leftJoinAndSelect("category.children", "children")
+      .where("category.parent_category_id IS NULL")
+      .getMany();
+
+    // Recursively fetch children for each root category
+    async function fetch_children(category: Category): Promise<void> {
+      if (category.children.length) {
+        for (const child of category.children) {
+          const nested_child = await category_repo.findOne({
+            where: { id: child.id },
+            relations: ["children"],
+          });
+          child.children = nested_child?.children || [];
+          await fetch_children(child);
+        }
+      }
+    }
+
+    for (const root_category of root_categories) {
+      await fetch_children(root_category);
+    }
+
+    // Recursively customize each category
+    const customized_categories = customize_translations(
+      root_categories,
+      locale
+    );
+
+    return res
+      .status(200)
+      .json({ status: "success", data: customized_categories });
+  }
+);

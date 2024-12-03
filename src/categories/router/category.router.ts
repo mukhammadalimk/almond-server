@@ -6,11 +6,14 @@ import {
 import {
   create_category,
   get_all_categories,
+  get_categories_with_children,
   get_category,
   get_category_with_hierarchy,
 } from "../controllers/category.controllers";
 
 const category_router = express.Router();
+
+category_router.get("/all-nested", get_categories_with_children);
 
 category_router.get("/:category_id", get_category);
 category_router.get("/:category_id/hierarchy", get_category_with_hierarchy);
