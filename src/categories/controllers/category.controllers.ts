@@ -103,6 +103,21 @@ export const get_category = catch_async(
   }
 );
 
+// ! DELETE CATEGORY - this deletes all listings related to itself so be careful to use it. Better use it until production
+export const delete_category = catch_async(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { category_id } = req.params;
+
+    await AppDataSource.createQueryBuilder()
+      .delete()
+      .from(Category)
+      .where("id = :id", { id: category_id })
+      .execute();
+
+    return res.sendStatus(204);
+  }
+);
+
 // GEY CATEGORY WITH FULL HIERARCHY
 export const get_category_with_hierarchy = catch_async(
   async (req: Request, res: Response, next: NextFunction) => {
