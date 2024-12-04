@@ -132,6 +132,40 @@ export const delete_category = catch_async(
   }
 );
 
+// UPDATE CATEGORY EXCEPT PARENT CATEGORY - // ! Be careful when updating slug of a category who has children because children's full_slugs depend on their parents' slug
+export const update_category = catch_async(
+  async (req: Request, res: Response, next: NextFunction) => {
+    // Utility to clean request body
+    const cleaned_body = clean_object(req.body);
+
+    // Ensure the body is not empty after cleaning
+    if (Object.keys(cleaned_body).length === 0) {
+      return next(new AppError("No valid fields to update.", 400));
+    }
+
+    // Prevent updating the parent category using this route
+    if ("parent_category_id" in cleaned_body) {
+      const error = "Parent category updates are not allowed in this endpoint.";
+      return next(new AppError(error, 400));
+    }
+
+    // Update the category
+    const result = await AppDataSource.createQueryBuilder()
+      .update(Category)
+      .set(cleaned_body)
+      .where("id = :id", { id: req.params.category_id })
+      .returning("*") // Return the updated category
+      .execute();
+
+    // Ensure the category was updated
+    if (result.affected === 0) {
+      return next(new AppError("Category not found or no changes made.", 404));
+    }
+
+    return res.status(200).json({ status: "success", data: result.raw[0] });
+  }
+);
+
 // GEY CATEGORY WITH FULL HIERARCHY
 export const get_category_with_hierarchy = catch_async(
   async (req: Request, res: Response, next: NextFunction) => {
