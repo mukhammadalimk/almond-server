@@ -6,20 +6,24 @@ import slugify from "slugify";
 import AppError from "../../utils/app.error";
 import { get_locale } from "../../utils/shared.functions";
 import { customize_translations } from "../utils/helper";
+import {
+  CustomizedCategoryResponse,
+  UpdateOrCreateCategoryRequestBody,
+} from "../types";
 
 // CREATE CATEGORY
 export const create_category = catch_async(
   async (req: Request, res: Response, next: NextFunction) => {
-    const { translations, parent_category_id, slug } = req.body;
+    const {
+      translations,
+      parent_category_id,
+      slug,
+    }: UpdateOrCreateCategoryRequestBody = req.body;
 
     // Return an error if translations does not come as an array
     if (!translations || !Array.isArray(translations)) {
-      return next(
-        new AppError(
-          "Translations are required and must be an array of objects.",
-          400
-        )
-      );
+      const error = `Translations are required and must be an array of objects.`;
+      return next(new AppError(error, 400));
     }
 
     // Return an error if english translation does not exist
@@ -70,51 +74,34 @@ export const get_category = catch_async(
     // Get locale from cookies and validate it
     const locale = get_locale(req.cookies.user_locale);
 
-    // Get categiry repository
+    // Get category repository
     const category_repo = AppDataSource.getRepository(Category);
 
-    // Find category from databasse
-    const category = await category_repo.findOne({
-      where: { id: category_id },
-    });
-
+    // Find category from the database
+    const category = await category_repo.findOneBy({ id: category_id });
     if (!category) {
       return next(new AppError("Category not found.", 404));
     }
 
     // Extract the name based on locale
     const translation = category.translations.find((t) => t.lang === locale);
-    const name = translation
-      ? translation.name
-      : category.translations.find((t) => t.lang === locale).name;
+    if (!translation) {
+      return next(
+        new AppError(`Translation not found for locale: ${locale}`, 400)
+      );
+    }
 
-    // Customize the response
-    const customized_category = {
+    const customized_category: CustomizedCategoryResponse = {
       id: category.id,
       legacy_id: category.legacy_id,
       slug: category.slug,
       full_slug: category.full_slug,
-      name,
+      name: translation.name,
     };
 
     return res
       .status(200)
       .json({ status: "success", data: customized_category });
-  }
-);
-
-// ! DELETE CATEGORY - this deletes all listings related to itself so be careful to use it. Better use it until production
-export const delete_category = catch_async(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const { category_id } = req.params;
-
-    await AppDataSource.createQueryBuilder()
-      .delete()
-      .from(Category)
-      .where("id = :id", { id: category_id })
-      .execute();
-
-    return res.sendStatus(204);
   }
 );
 
@@ -138,7 +125,7 @@ export const get_category_with_hierarchy = catch_async(
       return next(new AppError("Category not found", 404));
     }
 
-    const hierarchy = [];
+    const hierarchy: CustomizedCategoryResponse[] = [];
     let currentCategory = category;
 
     // Traverse up the hierarchy to build the full path
@@ -177,7 +164,7 @@ export const get_all_categories = catch_async(
     // Find categories from databasse
     const categories = await category_repo.find();
 
-    let customized_categories = [];
+    let customized_categories: CustomizedCategoryResponse[] = [];
     for (let i = 0; i < categories.length; i++) {
       const translation = categories[i].translations.find(
         (t) => t.lang === locale
@@ -233,10 +220,8 @@ export const get_categories_with_children = catch_async(
     }
 
     // Recursively customize each category
-    const customized_categories = customize_translations(
-      root_categories,
-      locale
-    );
+    const customized_categories: CustomizedCategoryResponse[] =
+      customize_translations(root_categories, locale);
 
     return res
       .status(200)
