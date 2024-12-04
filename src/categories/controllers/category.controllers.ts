@@ -166,6 +166,58 @@ export const update_category = catch_async(
   }
 );
 
+// UPDATE CATEGORY PARENT
+export const update_category_parent = catch_async(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { parent_category_id }: { parent_category_id: string | null } =
+      req.body;
+    const { category_id } = req.params;
+
+    const category_repo = AppDataSource.getRepository(Category);
+
+    // Find the category being updated
+    const category = await category_repo.findOneBy({ id: category_id });
+    if (!category) {
+      return next(new AppError("Category not found.", 404));
+    }
+
+    let updating_data: { parent_category: Category | null; full_slug?: string };
+
+    // If `parent_category_id` is null, remove the parent category
+    if (parent_category_id === null) {
+      updating_data = { parent_category: null, full_slug: category.slug };
+    } else {
+      // Otherwise, find the new parent category
+      const parent_category = await category_repo.findOneBy({
+        id: parent_category_id,
+      });
+
+      if (!parent_category) {
+        return next(new AppError("New parent category not found.", 400));
+      }
+
+      // Prevent assigning a category as its own parent
+      if (parent_category_id === category_id) {
+        return next(new AppError("A category cannot be its own parent.", 400));
+      }
+
+      updating_data = {
+        parent_category,
+        full_slug: `${parent_category.full_slug}/${category.slug}`,
+      };
+    }
+
+    // Update the category
+    const updated_category = await category_repo.save({
+      ...category,
+      ...updating_data,
+    });
+
+    // Respond with the updated category
+    return res.status(200).json({ status: "success", data: updated_category });
+  }
+);
+
 // GEY CATEGORY WITH FULL HIERARCHY
 export const get_category_with_hierarchy = catch_async(
   async (req: Request, res: Response, next: NextFunction) => {

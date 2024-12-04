@@ -11,6 +11,7 @@ import {
   get_category,
   get_category_with_hierarchy,
   update_category,
+  update_category_parent,
 } from "../controllers/category.controllers";
 
 const category_router = express.Router();
@@ -22,6 +23,13 @@ category_router
   .get(get_category)
   .delete(protect_routes, restrict_to("admin"), delete_category)
   .patch(protect_routes, restrict_to("admin"), update_category);
+
+category_router.patch(
+  "/:category_id/update-parent",
+  protect_routes,
+  restrict_to("admin"),
+  update_category_parent
+);
 
 category_router.get("/:category_id/hierarchy", get_category_with_hierarchy);
 
