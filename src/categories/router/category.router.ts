@@ -9,13 +9,17 @@ import {
   get_categories_with_children,
   get_category,
   get_category_with_hierarchy,
+  delete_category,
 } from "../controllers/category.controllers";
 
 const category_router = express.Router();
 
 category_router.get("/all-nested", get_categories_with_children);
 
-category_router.route("/:category_id").get(get_category);
+category_router
+  .route("/:category_id")
+  .get(get_category)
+  .delete(protect_routes, restrict_to("admin"), delete_category);
 
 category_router.get("/:category_id/hierarchy", get_category_with_hierarchy);
 

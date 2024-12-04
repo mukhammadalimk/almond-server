@@ -4,7 +4,7 @@ import AppDataSource from "../../data-source";
 import { Category } from "../../entities/Category";
 import slugify from "slugify";
 import AppError from "../../utils/app.error";
-import { get_locale } from "../../utils/shared.functions";
+import { clean_object, get_locale } from "../../utils/shared.functions";
 import { customize_translations } from "../utils/helper";
 import {
   CustomizedCategoryResponse,
@@ -102,6 +102,33 @@ export const get_category = catch_async(
     return res
       .status(200)
       .json({ status: "success", data: customized_category });
+  }
+);
+
+// DELETE CATEGORY - // ! this deletes all listings related to itself so be careful to use it. Better use it until production
+export const delete_category = catch_async(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { category_id } = req.params;
+
+    // Get category repository
+    const category_repo = AppDataSource.getRepository(Category);
+
+    // Check if the category exists
+    const category = await category_repo.findOneBy({ id: category_id });
+    if (!category) {
+      return next(new AppError("Category not found.", 404));
+    }
+
+    // Perform the deletion
+    try {
+      await category_repo.remove(category); // This will handle cascading deletes if configured in the entity.
+    } catch (error) {
+      return next(
+        new AppError("Error deleting category. Please try again later.", 500)
+      );
+    }
+
+    return res.sendStatus(204); // No content
   }
 );
 
